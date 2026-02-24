@@ -281,8 +281,8 @@ if __name__ == '__main__':
 
     model = Octopus(epi).to(device)
     model_name = model.__class__.__name__
-    output_path = f"/root/autodl-tmp/output"
-    data_path = f"/root/autodl-tmp/data"
+    output_path = f"output"
+    data_path = f"data"
     hic_fig_path = output_path + f'/hic_fig/{species}'
 
     genomic_features = True if epi > 0 else False
@@ -297,6 +297,10 @@ if __name__ == '__main__':
     fasta_path = data_path + f'/genome/{species}/genome.fa'
     genomic_path = data_path + f'/genomic_features/{species}/'
     hic_dir = data_path + f"/hic/{species}/"
+
+    # exclude_bed_path = data_path + f"/genome/hg38.bed"
+    # exclude_regions = GenomicDataset._load_exclude_regions_static(exclude_bed_path)
+
     chrom_hic_bins = GenomicDataset._preload_hic_bins_static(hic_dir)
     dna_feature = DNAFeature(path=fasta_path)
     dna_feature._load()
