@@ -34,10 +34,9 @@ mamba env create -f environment.yml
 conda activate 3D_chromatin
 ```
 # Section 2 : Dataset
-If you want to quickly get started with running the model, you can first download an example dataset we provide (Example_data) and place it in the data/ folder in your working directory. 
-The example data can be downloaded from XXX.
+If you want to quickly get started with running the model, you can first download an example dataset we provide [Example_data.tar.gz]() and place it in the data/ folder in your working directory.
 
-If you want to understand how we handle data, please follow the steps below.
+If you want to know how we handle raw data, see:[Raw_Data_Preprocessing_Pipeline](https://github.com/zzy-hzau/octopus/tree/master/Raw_Data_Preprocessing_Pipeline).
 
 # Section 3 : Train Octopus
 If you want to train your own Octopus, please refer to the configuration class below for setup.
@@ -141,4 +140,4 @@ if GenomicDataset._is_position_excluded_static(chrom, seq_start, seq_start + win
 ```bash
 python whole_chrom_prediction.py ----species cotton
 ```
-Here is the Hi-C predicted by our fine-tuning model: https://zenodo.org/records/18740232
+Here is the [Hi-C](https://zenodo.org/records/18740232) predicted by our fine-tuning model.
