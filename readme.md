@@ -17,6 +17,7 @@ GPU NVIDIA GeForce RTX 4090
 NVIDIA-SMI 580.76.05
 Driver Version: 580.76.05
 CUDA Version: 13.0
+
 ```
 
 First, install mamba for dependency management (as a fast alternative to Anaconda)
