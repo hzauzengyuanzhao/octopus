@@ -68,7 +68,3 @@ All scripts require a mandatory `WORK_DIR` argument to maintain a clean and fixe
 
 * **Global Reference**: The `chrom.sizes` file is automatically generated and stored at `${WORK_DIR}/chrom.sizes`.
 * **Centralized Logging**: All pipeline activities, including successes and failures across different samples, are recorded in `${WORK_DIR}/pipeline.log`.
-
----
-
-Would you like me to add a specific table detailing the input/output parameters for each script?
