@@ -15,7 +15,6 @@ from utils.get_model import get_model, get_mapping_model
 
 def save_matrix_as_cool(matrix, chrom, resolution, output_cool):
 
-
     n_bins = matrix.shape[0]
     matrix = matrix.astype(np.float64, copy=False)
 
@@ -48,45 +47,39 @@ def save_matrix_as_cool(matrix, chrom, resolution, output_cool):
 
 def save_matrices_as_single_cool(matrices_dict, resolution, output_cool, species_name):
     """
-    将所有染色体的矩阵保存到单个cool文件中
+    Save the matrices of all chromosomes into a single cool file
 
     Parameters:
     -----------
     matrices_dict : dict
-        键为染色体名称，值为该染色体的接触矩阵
+        The key is the chromosome name, and the value is the contact matrix of that chromosome.
     resolution : int
-        分辨率
     output_cool : str
-        输出cool文件路径
+        Output cool file path
     species_name : str
-        物种名称
     """
-
-    from itertools import chain
-
-    # 确保输出目录存在
+    # Ensure the output directory exists
     os.makedirs(os.path.dirname(output_cool), exist_ok=True)
-
-    # 如果文件已存在，先删除
+    # If the file already exists, delete it first
     if os.path.exists(output_cool):
         os.remove(output_cool)
 
-    # 按染色体顺序处理（可以按名称排序）
+    # Processed in chromosome order (sorted by name)
     chroms = sorted(matrices_dict.keys())
 
-    # 收集所有bin信息
+    # Collect all bin information
     all_bins = []
-    chrom_bin_offsets = {}  # 记录每个染色体在全局bin中的偏移量
+    chrom_bin_offsets = {}
 
     global_bin_idx = 0
     for chrom in chroms:
         matrix = matrices_dict[chrom]
         n_bins = matrix.shape[0]
 
-        # 记录这个染色体在全局bin中的起始位置
+        # Record the starting position of this chromosome in the global bin
         chrom_bin_offsets[chrom] = global_bin_idx
 
-        # 创建这个染色体的bin信息
+        # Create the bin information for this chromosome
         chrom_bins = pd.DataFrame({
             "chrom": [chrom] * n_bins,
             "start": np.arange(n_bins) * resolution,
@@ -96,10 +89,9 @@ def save_matrices_as_single_cool(matrices_dict, resolution, output_cool, species
         all_bins.append(chrom_bins)
         global_bin_idx += n_bins
 
-    # 合并所有bin
+    # Merge all bins
     bins_df = pd.concat(all_bins, ignore_index=True)
 
-    # 收集所有像素数据
     all_pixels = []
 
     for chrom in chroms:
@@ -107,12 +99,12 @@ def save_matrices_as_single_cool(matrices_dict, resolution, output_cool, species
         offset = chrom_bin_offsets[chrom]
         n_bins = matrix.shape[0]
 
-        # 只处理上三角部分（包括对角线）
+        # Only process the upper triangular part (including the diagonal)
         M_upper = scipy.sparse.triu(matrix, k=0, format="coo")
         mask = M_upper.data > 0
 
         if np.any(mask):
-            # 调整索引到全局bin编号
+            # Adjust the index to the global bin number
             global_rows = M_upper.row[mask] + offset
             global_cols = M_upper.col[mask] + offset
 
@@ -124,18 +116,16 @@ def save_matrices_as_single_cool(matrices_dict, resolution, output_cool, species
 
             all_pixels.append(pixels_chrom)
 
-    # 合并所有像素数据
     if all_pixels:
         pixels_df = pd.concat(all_pixels, ignore_index=True)
     else:
-        # 如果没有有效像素，创建空的DataFrame
         pixels_df = pd.DataFrame({
             "bin1_id": [],
             "bin2_id": [],
             "count": []
         })
 
-    # 保存为cool文件
+    # Save as a cool file
     cooler.create_cooler(
         output_cool,
         bins_df,
@@ -184,8 +174,8 @@ def allocate_accumulators(n_bins, band, dtype=np.float32):
 
 def add_local(sum_arr, wsum_arr, numer, denom, row0, n_bins, band):
     h, w = numer.shape  # [209,209]
-    # 是当前窗口在全染色体中的起始 Bin 索引。
-    # row1 是结束索引。使用 min 是为了防止染色体末端的窗口超出数组边界（越界保护）。
+    # row0 is the starting bin index of the current window across the entire chromosome
+    # row1 is the end index
     row1 = min(n_bins, row0 + h)
 
     if band is None:
@@ -194,17 +184,16 @@ def add_local(sum_arr, wsum_arr, numer, denom, row0, n_bins, band):
         return
     b = band
     for i_loc in range(row1 - row0):
-        i = row0 + i_loc  # 全局的行索引
-        # 确定当前行在全局范围内需要处理的列区间 [j0, j1)
-        # 全局指的是 n_bins * n_bins这个尺度下，每一个 (h, w) 的对角线和 (n_bins , n_bins)对角线重合的全局列索引j0,j1
-        j0 = max(row0, i - b)  # 全局列索引 左边界
-        j1 = min(row0 + w, i + b + 1)  # 全局列索引 右边界
+        i = row0 + i_loc  # Global row index
+        # Determine the column range [j0, j1) that needs to be processed for the current row globally
+        j0 = max(row0, i - b)  # left Boundary
+        j1 = min(row0 + w, i + b + 1)  # right Boundary
         if j0 >= j1:
             continue
-        jl = j0 - row0  # 计算在局部窗口 numer 中的左边界
-        jr = j1 - row0  # 计算在局部窗口 numer 中的右边界
-        bl = j0 - (i - b)  # 关键映射：将全局列坐标 j0 转换为带状矩阵中的存储列索引
-        br = bl + (j1 - j0)  # 对应的带状矩阵右边界
+        jl = j0 - row0  # Calculate the left boundary in the local window 'numer'
+        jr = j1 - row0  # Calculate the right boundary in the local window 'numer'
+        bl = j0 - (i - b)  # Convert the global column coordinate j0 to the storage column index in the banded matrix
+        br = bl + (j1 - j0)  # right boundary of the corresponding banded matrix
         sum_arr[i, bl:br] += numer[i_loc, jl:jr]
         wsum_arr[i, bl:br] += denom[i_loc, jl:jr]
 
@@ -250,8 +239,8 @@ def merge_one_patch(A, start, end, sum_arr, wsum_arr,
     )
 
     Aw = A * patch_weight
-    numer = L.T @ Aw @ L  # [209,209]  一次预测的真实值*权重
-    denom = L.T @ patch_weight @ L  # [209,209]  一次预测的真实权重
+    numer = L.T @ Aw @ L  # [209,209]
+    denom = L.T @ patch_weight @ L  # [209,209]
 
     add_local(sum_arr, wsum_arr, numer, denom, out_i0,
               n_bins=sum_arr.shape[0], band=band)
@@ -278,21 +267,21 @@ def main():
 
     device = torch.device(args.device)
 
-    # ===== 加载模型（你自己改这里）=====
+    # load model
     """model = MappingModel(0, teacher_model=None).to(device)
     model.load_state_dict(torch.load(args.model_path, map_location=device))
     model.eval() """
 
     model = MappingModel(0, teacher_model=None).to(device)
     # model_name = model.__class__.__name__
-    model_path = f'/autodl-fs/data/Fine-tune_meta_test/all/train/all/saved_models/best_model.pth'
+    model_path = f'data/model_weights/Fine-tune_model.pth'
     model = get_mapping_model(model, model_path)
     model.eval()
 
-    # ===== DNA =====
+    # load DNA
     from preprocess.data_feature import DNAFeature
-    data_path = f"/root/autodl-fs/zs_data1/select_species"
-    output_path = f"/root/autodl-fs/pre_hic_output/zs_data1"
+    data_path = f"data/select_species/"
+    output_path = f"output/pre_cool/"
     genome_dir = os.path.join(data_path, args.species)
     fa_files = glob.glob(os.path.join(genome_dir, "*.fa")) + glob.glob(os.path.join(genome_dir, "*.fasta"))
     if len(fa_files) == 0:
@@ -305,24 +294,23 @@ def main():
     species_output_dir = os.path.join(output_path, args.species)
     os.makedirs(species_output_dir, exist_ok=True)
 
-    # 存储所有染色体的矩阵
     all_chrom_matrices = {}
     t_species = time.time()
 
     for chrom in dna.chroms:
         t_chrom = time.time()
         chrom_length = dna.chrom_lengths[chrom]
-        # ===== merge init =====
+        # merge init
         n_bins = math.ceil(chrom_length / args.resolution)
         sum_arr, wsum_arr = allocate_accumulators(
             n_bins, args.band, dtype=np.float32
         )
         patch_weight = make_weight((256, 256), "hann")
-        # ===== streaming predict + merge =====
+        # streaming predict + merge
 
         starts = list(range(0, chrom_length - args.window + 1, args.step))
 
-        # 补最后一个“左移窗口”
+        # Fill in the last 'Shift Left Window'
         last_start = chrom_length - args.window
         if starts[-1] != last_start:
             starts.append(last_start)
@@ -341,6 +329,8 @@ def main():
                 if isinstance(preds, (tuple, list)):
                     preds = preds[0]
 
+            # during model training the hic values extracted from cool were log(x + 1) transformed for training,
+            # here we take the inverse function to restore the values in cool
             preds = np.expm1(np.maximum(preds.cpu().numpy(), 0))
 
             for i, start in enumerate(valid_starts):
@@ -355,10 +345,9 @@ def main():
                     args.band
                 )
 
-        # ===== 得到最终的矩阵 =====
+        # obtain the final matrix
         M = finalize(sum_arr, wsum_arr, args.band)
 
-        # 存储这个染色体的矩阵
         all_chrom_matrices[chrom] = M
 
         print(f"{args.species} [{chrom}] processed | shape: {M.shape} | time: {time.time() - t_chrom:.2f}s")

@@ -16,8 +16,8 @@ class GenomicDataset(Dataset):
                  val_chroms=None, test_chroms=None,
                  genomic_features=False, use_aug=False, exclude_bed_path=None):
         """
-        初始化基因组数据集
-        参数:
+        Initialize genome dataset
+        args:
             fasta_path: Path to the reference genome FASTA file
             hic_dir: Directory for storing Hi-C sample data
             genomic_path: Path to genome feature file
@@ -88,7 +88,7 @@ class GenomicDataset(Dataset):
                         exclude_regions[chrom] = []
                     exclude_regions[chrom].append((start, end))
 
-            # 对每个染色体的排除区间排序以便高效查询
+
             for chrom in exclude_regions:
                 exclude_regions[chrom].sort(key=lambda x: x[0])
 
@@ -99,7 +99,7 @@ class GenomicDataset(Dataset):
         return exclude_regions
 
     def _preload_hic_bins(self, hic_dir):
-        """预加载每个染色体的HiC矩阵最大bin数"""
+        """Maximum number of bins in the Hi-C matrix preloaded for each chromosome"""
         chrom_hic_bins = {}
         for chrom in self.chrom_lengths:
             hic_chrom = f"{chrom}"
@@ -108,12 +108,12 @@ class GenomicDataset(Dataset):
                 print(f"Warning: HiC file not found for {chrom}")
                 continue
             try:
-                # 加载HiC矩阵但不加载实际数据
+                # Load HiC matrix without loading actual data
                 with np.load(hic_path) as data:
                     if 'hic' in data:
                         chrom_hic_bins[chrom] = data['hic'].shape[0]
                     else:
-                        # 获取第一个数组作为HiC矩阵
+                        # Get the first array as the HiC matrix
                         first_key = data.files[0]
                         chrom_hic_bins[chrom] = data[first_key].shape[0]
             except Exception as e:
@@ -121,11 +121,11 @@ class GenomicDataset(Dataset):
         return chrom_hic_bins
 
     def _is_position_excluded(self, chrom, start, end):
-        """检查给定位置是否在排除区域内"""
+        """Check whether the given location is within the exclusion zone"""
         if not self.exclude_regions or chrom not in self.exclude_regions:
             return False
 
-        # 使用二分查找高效检查重叠
+        # Check for overlap using binary search
         regions = self.exclude_regions[chrom]
         low, high = 0, len(regions) - 1
 
@@ -133,7 +133,7 @@ class GenomicDataset(Dataset):
             mid = (low + high) // 2
             r_start, r_end = regions[mid]
 
-            # 检查重叠：我们的区间 [start, end) 与排除区间 [r_start, r_end) 重叠
+            # Check for overlap: our interval [start, end) overlaps with the excluded interval [r_start, r_end)
             if start < r_end and end > r_start:
                 return True
 
@@ -145,15 +145,14 @@ class GenomicDataset(Dataset):
         return False
 
     def _generate_samples(self):
-        """根据染色体划分生成样本位置"""
+        """Generate sample locations based on chromosome segmentation"""
         entries = []
-        # 获取所有染色体
         chroms = list(self.chrom_lengths.keys())
 
         for chrom in chroms:
             if chrom == 'chrY' or chrom == 'chrX':
-                continue  # 忽略chrY X，不生成任何样本
-            # 根据模式选择染色体
+                continue
+            # Select chromosomes based on the pattern
             if self.train_chroms is not None:
                 if self.mode == 'train' and chrom not in self.train_chroms:
                     continue
@@ -165,8 +164,6 @@ class GenomicDataset(Dataset):
             if self.mode == 'valid' and chrom not in self.valid_chroms:
                 continue
 
-
-            # 获取染色体长度
             chrom_length = self.chrom_lengths[chrom]
 
             if chrom not in self.chrom_hic_bins:
@@ -174,21 +171,21 @@ class GenomicDataset(Dataset):
                 continue
 
             max_hic_bin = self.chrom_hic_bins[chrom]
-            max_valid_bp = max_hic_bin * self.res  # 计算有效的最大bp位置
+            max_valid_bp = max_hic_bin * self.res  # Calculate the position of the effective maximum bp
 
-            # 计算有效区域
+            # Calculate the effective area
             start_pos = MARGIN
             end_pos = min(chrom_length, max_valid_bp) - MARGIN
 
             if end_pos - start_pos < self.windows:
                 print(f"Skipping chromosome {chrom} (insufficient valid region: {end_pos - start_pos} < {self.windows})")
                 continue
-            # 划分采样区域
+            # Divide the sampling area
             current = start_pos
-            while current + BLOCK_SIZE <= end_pos:
+            while current + BLOCK_SIZE <= end_pos:      # Skip Exclusion Zone
                 if self.exclude_regions and self._is_position_excluded(chrom, current, current + BLOCK_SIZE):
                     current += OFFSET
-                    continue  # 跳过排除区域
+                    continue
                 entries.append({
                     'chrom': chrom,
                     'start': current,
@@ -199,14 +196,14 @@ class GenomicDataset(Dataset):
 
     @staticmethod
     def _preload_chrom_lengths(fasta_path):
-        """预加载所有染色体长度信息"""
+        """Preload all chromosome length information"""
         fasta = FastaFile(fasta_path)
         chrom_lengths = {chrom: length for chrom, length in zip(fasta.references, fasta.lengths)}
         fasta.close()
         return chrom_lengths
 
     def _get_hic_feature(self, chrom):
-        """获取样本的HiC特征提取器（带缓存）"""
+        """HiC Feature Extractor for Obtaining Samples (with Caching)"""
         cache_key = f"{chrom}"
         if cache_key not in self.hic_features:
             hic_path = os.path.join(self.hic_dir, f"{chrom}.npz")
@@ -219,7 +216,8 @@ class GenomicDataset(Dataset):
         return len(self.entries)
 
     def __getitem__(self, idx):
-        # 延迟初始化资源 在每个 worker 首次访问数据时，打开文件 每个 worker 访问自己的资源副本
+        # Lazy initialization of resources: open the file when each worker accesses the data for the first time;
+        # each worker accesses its own copy of the resource.
         if self.fasta is None:
             self.fasta = FastaFile(self.fasta_path)
 
@@ -229,7 +227,7 @@ class GenomicDataset(Dataset):
         if self.genomic_features:
             for bw_file, norm_method in self.bw_files.items():
                 if bw_file not in self.feature_extractors:
-                    feature_name = os.path.splitext(bw_file)[0]  # 去掉扩展名作为特征名
+                    feature_name = os.path.splitext(bw_file)[0]
                     self.feature_extractors[feature_name] = GenomicFeature(
                         os.path.join(self.genomic_path, bw_file),
                         norm=norm_method
@@ -243,14 +241,14 @@ class GenomicDataset(Dataset):
         if self.use_aug and self.mode == 'train':
             start = self.shift_aug(block_start, block_end)
         else:
-            start = block_start  # 固定位置
+            start = block_start
 
         end = start + self.windows
 
-        # 获取DNA序列
+        # Obtain DNA sequence
         dna = self.dna_feature.get(chrom, start, end)
 
-        # 获取HiC矩阵
+        # Obtain Hi-C matrix
         hic_feature = self._get_hic_feature(chrom)
         hic_mat = hic_feature.get(start, window=self.windows, res=self.res)
         hic_mat = resize(hic_mat, (self.output, self.output), anti_aliasing=True)
@@ -337,7 +335,7 @@ class GenomicDataset(Dataset):
         while low <= high:
             mid = (low + high) // 2
             rs, re = regions[mid]
-            if start < re and end > rs:  # 有重叠
+            if start < re and end > rs:
                 return True
             if end <= rs:
                 high = mid - 1
@@ -346,7 +344,7 @@ class GenomicDataset(Dataset):
         return False
     @staticmethod
     def _load_exclude_regions_static(bed_path):
-        """静态版本：不依赖 self，只返回 dict"""
+        """Static version: does not rely on self, only returns a dict"""
         exclude = {}
         with open(bed_path) as f:
             for line in f:
@@ -359,7 +357,7 @@ class GenomicDataset(Dataset):
         return exclude
     @staticmethod
     def _preload_hic_bins_static(hic_dir):
-        """静态版：仅返回 chrom->max_bin 字典"""
+        """Static version: only returns the chrom->max_bin dictionary"""
         chrom_bins = {}
         for fname in os.listdir(hic_dir):
             if not fname.endswith('.npz'):
@@ -375,13 +373,13 @@ class GenomicDataset(Dataset):
         return chrom_bins
     @staticmethod
     def _hic_bin_safe(chrom, start_bp, end_bp, res, chrom_bins):
-        """返回 True 表示该 bp 区间在 Hi-C 范围内"""
+        """Returning True indicates that this bp interval is within the Hi-C range"""
         if chrom not in chrom_bins:
             return False
         max_bp = chrom_bins[chrom] * res
         return end_bp <= max_bp
+
     def close(self):
-        """关闭所有打开的文件句柄"""
         if self.fasta is not None:
             self.fasta.close()
             self.fasta = None
@@ -400,7 +398,7 @@ class GenomicDataset(Dataset):
 
 
 def collate_fn(batch):
-    """批处理样本并跳过错误"""
+    """Batch process samples and skip errors"""
     dna_batch = []
     hic_batch = []
 

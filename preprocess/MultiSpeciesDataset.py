@@ -17,7 +17,7 @@ class MultiSpeciesDataset(Dataset):
         self.datasets = []
         self.entries = []  # (sp_id, idx)
 
-        # 遍历物种列表，加载每个物种的 GenomicDataset
+        # Traverse the list of species and load the GenomicDataset for each species
         for sp_id, sp in enumerate(config.species_list):
             dataset = GenomicDataset(
                 fasta_path=os.path.join(config.data_path, "genome", sp, "genome.fa"),
@@ -28,13 +28,13 @@ class MultiSpeciesDataset(Dataset):
                 res=config.res,
                 output=config.output,
                 bw=None,
-                genomic_features=False,  # 🚨 DNA-only
+                genomic_features=False,  # DNA-only
                 use_aug=config.use_aug,
                 exclude_bed_path=None,
             )
             self.datasets.append(dataset)
 
-            # 保存所有样本索引，并打上物种 ID
+            # Save all sample indices and label them with species IDs
             for idx in range(len(dataset)):
                 self.entries.append((sp_id, idx))
 
@@ -49,7 +49,7 @@ class MultiSpeciesDataset(Dataset):
 
 def collate_fn(batch):
     """
-    自定义 collate_fn，保证 batch 里包含 species_id。
+    Customize collate_fn to ensure the batch contains species_id.
     """
     dna_batch = torch.stack([item[0] for item in batch])
     hic_batch = torch.stack([item[1] for item in batch])
@@ -58,9 +58,7 @@ def collate_fn(batch):
 
 
 class MultiSpeciesDataModule(pl.LightningDataModule):
-    """
-    PyTorch Lightning 的 DataModule，封装 train/val dataloader。
-    """
+
     def __init__(self, config):
         super().__init__()
         self.config = config

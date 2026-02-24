@@ -11,9 +11,9 @@ from model.MappingModel import MappingModel
 from utils.mapping_train_process import GenomicModel, GenomicDataModule
 
 from utils.get_model import get_model
-os.environ['TORCH_NCCL_BLOCKING_WAIT'] = '1'  # 阻塞通信模式
-os.environ['TORCH_NCCL_ASYNC_ERROR_HANDLING'] = '1'  # 异步错误处理
-os.environ['NCCL_TIMEOUT'] = '600'  # 10分钟超时
+os.environ['TORCH_NCCL_BLOCKING_WAIT'] = '1'
+os.environ['TORCH_NCCL_ASYNC_ERROR_HANDLING'] = '1'
+os.environ['NCCL_TIMEOUT'] = '600'
 
 class Config:
     def __init__(self, args):

@@ -34,22 +34,24 @@ def fine_scan_bin(model,
                   bin_size,
                   del_len=10,
                   step=10,
-                  batch_size=8,  # 新增参数，控制批处理大小
+                  batch_size=8,
                   device=torch.device('cuda:0')):
     """
-    在给定的 bin_idx 内做细粒度扫描（每10bp删除一个10bp窗口），使用批处理加速。
-    返回一个 DataFrame
+    Perform a fine-grained scan within the given bin_idx (deleting a 10bp window every 10bp),
+    using batch processing to speed up.
+
+    Return a DataFrame.
     """
     feat_dim = combined_features.shape[1]
     bin_start_bp = seq_start + bin_idx * bin_size
     bin_end_bp = bin_start_bp + bin_size
 
-    # 1. 收集所有要删除的起始位置
+    # 1.Collect all starting positions to be deleted
     del_starts = list(range(bin_start_bp, bin_end_bp - del_len + 1, step))
     total_dels = len(del_starts)
     results = []
 
-    # 2. 预先为所有删除操作创建修改后的序列（numpy数组）
+    # 2.Pre-create the modified sequence (numpy array) for all delete operations
     modified_seqs = []
     for del_start in del_starts:
         new_seq = combined_features.copy()
@@ -57,31 +59,31 @@ def fine_scan_bin(model,
         rel_end = rel_start + del_len
         # DNA -> N
         new_seq[rel_start:rel_end, :5] = 0.0
-        new_seq[rel_start:rel_end, 4] = 1.0  # 代表'N'的one-hot编码
+        new_seq[rel_start:rel_end, 4] = 1.0  # One-hot encoding representing 'N'
         if feat_dim > 5:
-            new_seq[rel_start:rel_end, 5:] = 0.0  # 表观遗传信号置零
+            new_seq[rel_start:rel_end, 5:] = 0.0  # Reset epigenetic signals
         modified_seqs.append(new_seq)
 
-    # 3. 分批进行模型预测
+    # 3.Perform model predictions in batches
     all_after_preds = []
     with torch.no_grad():
         for i in range(0, total_dels, batch_size):
             batch_seqs = modified_seqs[i:i+batch_size]
-            # 将列表中的numpy数组堆叠成一个批次的tensor
+            # Stack the numpy arrays in the list into a batch tensor
             batch_tensor = torch.tensor(np.stack(batch_seqs, axis=0), dtype=torch.float32).to(device)
             preds = model(batch_tensor)
             if isinstance(preds, (tuple, list)):
                 preds = preds[0]
-            # 将预测结果转换为numpy并存储
+            # Convert the prediction results to numpy and store them
             batch_preds = preds.detach().cpu().numpy()
             all_after_preds.append(batch_preds)
-        # 合并所有批次的预测结果
+        # Merge the prediction results of all batches
         all_after_preds = np.vstack(all_after_preds)  # [total_dels, 256, 256]
 
-    # 4. 计算每个删除操作后的分数
+    # 4. Calculate the score after each deletion operation
     for idx, del_start in enumerate(del_starts):
         del_end = del_start + del_len
-        after = all_after_preds[idx]  # 获取对应的预测结果
+        after = all_after_preds[idx]  # Obtain the corresponding prediction results
         scores = compute_all_importance(pre_before, after, bin_idx)
         row = {
             "chrom": chrom,
@@ -94,7 +96,6 @@ def fine_scan_bin(model,
         results.append(row)
 
     return pd.DataFrame(results)
-
 
 
 def segment_deletion_importance(
@@ -110,54 +111,56 @@ def segment_deletion_importance(
     device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 ):
     """
-    对一个 2M 区域分成 `segments` 个片段（默认256）。
-    对于每个片段，**同时**在该片段内部均匀选择 del_times 个起始位点，每个删除 del_len bp（连续），
-    将这些位点的 DNA => N（one-hot 全 0 且第 4 列置为 1），ATAC/CTCF => 全 0，
-    然后对比模型预测 pre_before 与 pre_after，计算该片段与其他片段互作变化作为该片段的重要性得分：
-        importance[i] = sum_{j != i} |pre_before[i, j] - pre_after[i, j]|
-    返回:
-        importances (np.array, length=segments),
-        pre_before (256 x 256 numpy),
-        pre_after_all (segments x 256 x 256 numpy)  # 所有片段各自删除后的预测（如果内存太大，可不返回）
+    For a 2M region divided into segments fragments (default 256).
+    For each fragment, simultaneously select del_times starting positions uniformly within that fragment, and delete del_len bp consecutively from each starting point.
+    Set the DNA at these positions to N (one-hot vector all zeros with the 4th column set to 1), and set ATAC/CTCF signals to all zeros.
+    Then compare the model predictions pre_before and pre_after, and compute the interaction change between this fragment and all other fragments as the importance score for the fragment:
+    importance[i] = sum_{j != i} |pre_before[i, j] - pre_after[i, j]|
+
+    Return:
+        importances (np.array, length = segments)
+        pre_before (256 x 256 numpy array)
+        pre_after_all (segments x 256 x 256 numpy array)
+        # predictions after deletion for each fragment (if memory usage is too high, this can be omitted)
     Notes:
-      - 支持分批预测（batch_size）
-      - 可能较耗显存，batch_size 可调小
+        Supports batch prediction (batch_size).
+        May be memory-intensive on GPU; batch_size can be reduced if needed.
     """
 
     feat_dim = combined_features.shape[1]
 
-    # 计算 segment 边界
+    # Calculate segment boundaries
     bin_size = windows // segments  # bp per segment
     importances = np.zeros(segments, dtype=float)
 
-    # 我们会生成每个 segment 的“删除后输入”并分批送入模型
-    # 但是构造 256 个大张量会很大，使用分批（batch_size）
-    # 预先构造所有修改后的 numpy arrays 成 list，然后批量转换为 tensor 并预测
+    # We will generate the 'input after deletion' for each segment and feed them into the model in batches.
+    # But constructing 256 large tensors would be huge, so use batching (batch_size).
+    # Pre-construct all the modified numpy arrays into a list, then convert them to tensors in batches and make predictions
     modified_inputs = []  # will hold numpy arrays shape [windows, feat_dim] for each segment
 
     for seg_idx in range(segments):
         seg_start_bp = seq_start + seg_idx * bin_size
         seg_end_bp = seg_start_bp + bin_size
 
-        # 计算在该 segment 中要删除的 del_times 个起始位置，尽量均匀分布
-        # 确保删除段完全落在 segment 内：
+        # Calculate the del_times starting positions to be deleted in the segment, distribute them as evenly as possible,
+        # and ensure that the deleted segments are completely within the segment.
 
-        # 使用 linspace 生成 del_times 个位置的起始坐标  均匀生成
+        # Use linspace to generate starting coordinates for del_times positions evenly
         starts = np.linspace(seg_start_bp, seg_end_bp - del_len, num=del_times)
         starts = np.floor(starts).astype(int)
 
-        # 复制原始 combined_features，然后在每个 start 上做删除（N + epi zeros）
+        # Copy the original combined_features, then perform deletion at each start
         new_seq = combined_features.copy()
         for s in starts:
-            rel_start = s - seq_start  # 相对索引到 new_seq
+            rel_start = s - seq_start  # Relative index to new_seq
             rel_end = rel_start + del_len
             # boundary safety
             rel_start = max(0, rel_start)
             rel_end = min(windows, rel_end)
-            # DNA -> N:
+            # DNA to N:
             new_seq[rel_start:rel_end, :5] = 0.0
             new_seq[rel_start:rel_end, 4] = 1.0
-            # epi tracks (from col 5 onwards) 置为 0
+            # epi tracks (from col 5 onwards) to 0
             if feat_dim > 5:
                 new_seq[rel_start:rel_end, 5:] = 0.0
 
@@ -178,15 +181,15 @@ def segment_deletion_importance(
                 pre_after_all.append(preds[b])
 
     pre_after_all = np.stack(pre_after_all, axis=0)  # [segments, 256, 256]
-    # 计算每个 segment 对其他 segment 的影响得分
+    # Calculate the impact score of each segment on other segments
     for seg_idx in range(segments):
         before = pre_before   # length 256
         after = pre_after_all[seg_idx]
         diff = np.abs(before - after)
-        diff[seg_idx,:] = 0.0  # 排除自身
+        diff[seg_idx,:] = 0.0  # Exclude oneself
         diff[:,seg_idx] = 0.0
 
-        # 另外可以同时计算一个全局相对变化（作为备选）
+        # Calculate global relative change
         importance_global = np.sum(diff) / (np.sum(np.abs(pre_before)) + 1e-8)
 
         importances[seg_idx] = importance_global
@@ -194,15 +197,14 @@ def segment_deletion_importance(
     return importances, pre_after_all
 
 
-
 def plot_importance_epi_tracks(importances, atac_bins, ctcf_bins,
                                chrom, seq_start, windows=2097152,
                                save_dir="./", filename="importance_vs_epi.png"):
     """
-    三行子图：importances, ATAC, CTCF
+    Three-row subgraph：importances, ATAC, CTCF
     Args:
-        importances: (256,) importance 数组
-        atac_bins, ctcf_bins: (256,) 平均信号
+        importances: (256,) importance arrays
+        atac_bins, ctcf_bins: (256,)
     """
     seq_end = seq_start + windows
     x = np.arange(len(importances))
@@ -241,14 +243,14 @@ def plot_importance_epi_tracks(importances, atac_bins, ctcf_bins,
 def plot_epi_tracks(atac_feature, ctcf_feature, chrom, seq_start, windows=2097152, segments=256,
                     save_dir="./", filename="epi_tracks.png"):
     """
-    把 ATAC / CTCF 信号在一个 2M 区域内按 256 bins 平均并画出来
+    Average the ATAC/CTCF signals over a 2M region using 256 bins and plot it
 
     Args:
-        atac_feature, ctcf_feature: GenomicFeature 对象
-        chrom: 染色体
-        seq_start: 起点坐标
-        windows: 区间长度 (默认 2M)
-        segments: 分段数 (默认 256)
+        atac_feature, ctcf_feature: GenomicFeature
+        chrom
+        seq_start
+        windows: Interval length (Default 2M)
+        segments: Number of sections (Default 256)
     """
 
     seq_end = seq_start + windows
@@ -279,13 +281,13 @@ if __name__ == '__main__':
 
     model = Octopus(epi).to(device)
     model_name = model.__class__.__name__
-    output_path = f"/root/autodl-tmp/output"
-    data_path = f"/root/autodl-tmp/data"
+    output_path = f"output"
+    data_path = f"data"
     hic_fig_path = output_path + f'/hic_fig/{species}'
 
     genomic_features = True if epi > 0 else False
 
-    model_path = output_path + f'/saved_models/{species}/{model_name}_{genomic_features}/best_model.pth'
+    model_path = f'data/model_weights/cotton_best_model.pth'
     model = get_model(model, model_path)
     model.eval()
 
@@ -295,6 +297,10 @@ if __name__ == '__main__':
     fasta_path = data_path + f'/genome/{species}/genome.fa'
     genomic_path = data_path + f'/genomic_features/{species}/'
     hic_dir = data_path + f"/hic/{species}/"
+
+    # exclude_bed_path = data_path + f"/genome/hg38.bed"
+    # exclude_regions = GenomicDataset._load_exclude_regions_static(exclude_bed_path)
+
     chrom_hic_bins = GenomicDataset._preload_hic_bins_static(hic_dir)
     dna_feature = DNAFeature(path=fasta_path)
     dna_feature._load()
@@ -318,7 +324,7 @@ if __name__ == '__main__':
             importance_excel = output_path + f"/explanation_{species}/importance_10bp/{chrom}"
             os.makedirs(importance_excel, exist_ok=True)
             print(f'chrom_bins:{chrom_hic_bins[chrom]}')
-            chrom_bin_scores = []  # 存当前染色体所有 bin 的分数
+            chrom_bin_scores = []  # Save scores of all bins in the current chromosome
             for seq_start in range(0, chrom_length - 5000000, 2097152):
                 seq_end = seq_start + windows
                 '''if GenomicDataset._is_position_excluded_static(chrom, seq_start, seq_start + windows, exclude_regions):
@@ -333,14 +339,14 @@ if __name__ == '__main__':
                 atac = atac_feature.get(chrom, seq_start, seq_end).reshape(-1, 1)
                 ctcf = ctcf_feature.get(chrom, seq_start, seq_end).reshape(-1, 1)
                 combined_features = np.concatenate((dna, atac, ctcf), axis=1)
-                # 原始输入 tensor
+                # Original input tensor
                 input_before = torch.tensor(combined_features, dtype=torch.float32).unsqueeze(0).to(
                     device)  # [1, windows, feat]
                 targets = hic_feature.get(seq_start, windows, 10000)
                 targets = resize(targets, (256, 256), anti_aliasing=True)
                 targets = np.log(targets + 1)
 
-                # 模型预测原始
+                # Model Prediction Original
                 with torch.no_grad():
                     pre_before = model(input_before)
                     if isinstance(pre_before, (tuple, list)):
@@ -371,16 +377,16 @@ if __name__ == '__main__':
                     chrom=chrom, seq_start=seq_start,
                     save_dir=importance_fig, filename=f"{chrom}_{seq_start}_importance_vs_epi.png"
                 )
-                print(f"对比图保存到:{savefig}")
+                print(f"Save comparison image to:{savefig}")
 
                 elapsed = time.time() - start_time
-                print(f"区间 {chrom}:{seq_start}-{seq_start + windows} 运行耗时: {elapsed / 60:.2f} 分钟 ({elapsed:.1f} 秒)")
+                print(f"{chrom}:{seq_start}-{seq_start + windows} execution time: {elapsed / 60:.2f} min ({elapsed:.1f} s)")
 
             start_time = time.time()
             df = pd.DataFrame(chrom_bin_scores, columns=["seq_start", "bin_idx", "score"])
             threshold = df["score"].quantile(0.99)
             df_high = df[df["score"] >= threshold]
-            print(f"{chrom}: 保留 {len(df_high)}/{len(df)} 个高分 bin (>= {threshold:.4f})")
+            print(f"{chrom}: Reserved {len(df_high)}/{len(df)} bins (>= {threshold:.4f})")
 
             for _, row in df_high.iterrows():
                 seq_start, bin_idx = int(row["seq_start"]), int(row["bin_idx"])
@@ -416,6 +422,6 @@ if __name__ == '__main__':
                 excel_path = os.path.join(importance_excel, excel_name)
                 os.makedirs(os.path.dirname(excel_path), exist_ok=True)
                 fine_df.to_excel(excel_path, index=False)
-                print(f"细粒度扫描结果保存到: {excel_path}")
+                print(f"Save fine-grained scan results to:{excel_path}")
             elapsed = time.time() - start_time
-            print(f"chrom:{chrom} has processed!!! 运行耗时: {elapsed / 60:.2f} 分钟 ({elapsed:.1f} 秒)")
+            print(f"chrom:{chrom} has processed!!! Execution time: {elapsed / 60:.2f} min ({elapsed:.1f} s)")

@@ -12,7 +12,7 @@ def main(path, save_path, resolution, window_size, balance=False):
         diags = compress_diag(mat, window_size)
         ucsc_chrom = f'{chrom}.npz'
         chrom_path = f'{save_path}/{ucsc_chrom}'
-        os.makedirs(f'{save_path}/', exist_ok=True)  # 确保文件夹存在
+        os.makedirs(f'{save_path}/', exist_ok=True)
         np.savez(chrom_path, **diags)
         print(f'npz has saved {chrom_path}')
 

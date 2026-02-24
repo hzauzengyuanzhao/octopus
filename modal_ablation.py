@@ -221,13 +221,13 @@ if __name__ == '__main__':
             'pear': pear_result[start][0] if isinstance(pear_result[start], (list, np.ndarray)) else pear_result[start],
         }
 
-        # 原始权重 (3 个专家)
+        # Original weights (3 experts)
         weight = weights[start]
         record['weight1'] = weight[0]
         record['weight2'] = weight[1]
         record['weight3'] = weight[2]
 
-        # epi 模态结果
+        # epi modal results
         record['epi_insu'] = epi_insu_result[start][0] if isinstance(epi_insu_result[start], (list, np.ndarray)) else \
         epi_insu_result[start]
         record['epi_pear'] = epi_pear_result[start][0] if isinstance(epi_pear_result[start], (list, np.ndarray)) else \
@@ -237,7 +237,7 @@ if __name__ == '__main__':
         record['epi_weight2'] = epi_w[1]
         record['epi_weight3'] = epi_w[2]
 
-        # dna 模态结果
+        # DNA modal results
         record['dna_insu'] = dna_insu_result[start][0] if isinstance(dna_insu_result[start], (list, np.ndarray)) else \
         dna_insu_result[start]
         record['dna_pear'] = dna_pear_result[start][0] if isinstance(dna_pear_result[start], (list, np.ndarray)) else \

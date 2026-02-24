@@ -15,7 +15,6 @@ np.random.seed(42)
 
 
 class Config:
-    # 路径配置
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     species = 'cotton'
@@ -38,14 +37,14 @@ class Config:
     output = 256
     batch_size = 4
 
-    # 路径配置
+    # Path Configuration
     fasta_path = data_path + f'/genome/{species}/genome.fa'
     genomic_path = data_path + f'/genomic_features/{species}/'
     hic_dir = data_path + f"/hic/{species}/"
 
-    # 模型保存路径
-    model_path = output_path + f'/saved_models/{model_species}/{model.__class__.__name__}_{genomic_features}/best_model.pth'
-    # 日志和结果保存
+    # Model Save Path
+    model_path = f'data/model_weights/cotton_best_model.pth'
+    # Logs and Results Saving
     log_dir = output_path + f"/logs/{species}/{model.__class__.__name__}_{genomic_features}/{model_species}_model_test/"
     os.makedirs(log_dir, exist_ok=True)
     results_file = os.path.join(log_dir, f"{model_species}_model_test_results.txt")
@@ -72,7 +71,7 @@ if __name__ == '__main__':
         test_chroms=config.test_chroms,
         genomic_features=config.genomic_features
     )
-    # 创建数据加载器
+
     test_loader = DataLoader(
         test_dataset,
         batch_size=config.batch_size,
@@ -93,24 +92,20 @@ if __name__ == '__main__':
         f"Best Test Observed vs expected: {test_oe:.4f}"
     ]
 
-    # 1) 打印到终端
+    # Print to terminal
     for line in log_lines:
         print(line)
 
-    # 2) 写进文件
+    # Write to file
     with open(config.results_file, "w", encoding="utf-8") as f:
         f.write("\n".join(log_lines))
 
     plt.figure(figsize=(12, 8))
     plt.plot(test_dis, marker='o', linestyle='-', color='b')
-
-    # 添加标题和标签
     plt.title('baes_val_dises')
     plt.xlabel('The position from the diagonal')
     plt.ylabel('Pearson Correlation')
-    # 显示网格
     plt.grid(True)
-    # 显示图形
     plt.savefig(config.plot_dis_path)
     plt.close()
 
@@ -122,6 +117,6 @@ if __name__ == '__main__':
             "OE": all_oe
         })
         df.to_excel(config.excel_path, index=False)
-        print(f"已保存每个样本的皮尔逊和绝缘相关系数到:{config.excel_path}")
-    # 关闭数据集
+        print(f"Saved the Pearson and insulation correlation coefficients for each sample to:{config.excel_path}")
+    # Close dataset
     test_dataset.close()
