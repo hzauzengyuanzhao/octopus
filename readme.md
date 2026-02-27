@@ -141,3 +141,7 @@ if GenomicDataset._is_position_excluded_static(chrom, seq_start, seq_start + win
 python whole_chrom_prediction.py ----species cotton
 ```
 Here is the [Hi-C](https://zenodo.org/records/18740232) predicted by our fine-tuning model.
+
+# Section 7 : 
+We have developed a [web site](http://cotton-bigdata.hzau.edu.cn/octopus) for visualizing predictions of Hi-C maps for various species.
+
