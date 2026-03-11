@@ -1,44 +1,53 @@
-# Section 1 : Setup Environment
-You can follow the instructions to setup the environment.\
-Our test env Info bellow
+![octopus](docs/octopus_logo.png)
 
-```bash
-System Info
------------------------------------------
-Distributor ID: Ubuntu
-Description:    Ubuntu 22.04.1 LTS
-Release:        22.04
-Codename:       jammy
-ldd --version
-ldd (Ubuntu GLIBC 2.35-0ubuntu3.1) 2.35
------------------------------------------
-GPU NVIDIA GeForce RTX 4090
-NVIDIA-SMI 580.76.05
-Driver Version: 580.76.05
-CUDA Version: 13.0
+# Octopus
+A multimodal deep learning framework for cross-species prediction of plant 3D chromatin architecture.
 
-```
+Octopus is a deep learning framework for predicting 3D chromatin architecture across plant species. It integrates genomic sequence and epigenomic signals to model chromatin folding, and further supports DNA-only prediction in species lacking epigenomic data through a mapping-based knowledge distillation strategy.
 
-First, install mamba for dependency management (as a fast alternative to Anaconda)
+## Overview
+
+Three-dimensional genome organization is a key layer of transcriptional regulation, yet plant 3D genomics remains underexplored because matched Hi-C and epigenomic datasets are available for only a limited number of species. This limits the development of predictive models tailored to plant genome architecture.
+
+Octopus addresses this challenge with a unified deep learning framework for chromatin contact prediction in both data-rich and data-limited settings. In species with multimodal data, Octopus integrates DNA sequence and chromatin accessibility signals to predict high-resolution contact maps. In species with sequence data only, Octopus uses a DNA-to-multimodal mapping strategy to reconstruct informative latent representations, enabling cross-species transfer of 3D genome prediction models.
+
+
+## Installation
+Octopus has been tested in the following environment: 
+
+### Tested environment
+- Ubuntu 22.04.1 LTS
+- GLIBC 2.35
+- NVIDIA GeForce RTX 4090
+- NVIDIA Driver 580.76.05
+- CUDA 13.0
+
+
+### 1. Install Miniforge / mamba
+
 ```bash
 wget "https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-$(uname)-$(uname -m).sh"
 bash Miniforge3-$(uname)-$(uname -m).sh  # accept all terms and install to the default location
 rm Miniforge3-$(uname)-$(uname -m).sh  # (optionally) remove installer after using it
 source ~/.bashrc  # alternatively, one can restart their shell session to achieve the same result
 ```
-Install dependencies
+
+### 2. Clone the repository and create the environment
+
 ```bash
 git clone https://github.com/zzy-hzau/octopus.git
 cd octopus
 mamba env create -f environment.yml
-conda activate 3D_chromatin
+mamba activate 3D_chromatin
 ```
-# Section 2 : Dataset
-If you want to quickly get started with running the model, you can first download an example dataset we provide [Example_data.tar.gz]() and place it in the data/ folder in your working directory.
 
-If you want to know how we handle raw data, see:[Raw_Data_Preprocessing_Pipeline](https://github.com/zzy-hzau/octopus/tree/master/Raw_Data_Preprocessing_Pipeline).
+## Data Preparation
 
-# Section 3 : Train Octopus
+To quickly get started, please download the example dataset [Example_data.tar.gz]() and place it under the `data/` directory.
+For raw data preprocessing, please refer to the [Raw Data Preprocessing Pipeline](https://github.com/zzy-hzau/octopus/tree/master/Raw_Data_Preprocessing_Pipeline).
+
+## Training
+
 If you want to train your own Octopus, please refer to the configuration class below for setup.
 ## Class Configuration Documentation
 #### Distributed training setup
@@ -115,19 +124,29 @@ After configuring these parameters and files:
 ```bash
 python train.py
 ```
-# Section 4 : Test Octopus
+## Evaluation
+
+To evaluate a trained model on the test set, run:
 
 ```bash
 python test.py
 ```
 
-# Section 5 : Virtual Deletion
-If you need to perform a virtual deletion, please prepare the corresponding genome file (required), epigenome (optional), 
-Hi-C data (optional), and the corresponding model weights (required). Usage:
+## Virtual Deletion
+Octopus supports in silico virtual deletion analysis for studying the sequence basis of chromatin folding. To run this workflow, please prepare:
+
+- genome sequence file (required)
+- epigenomic data (optional)
+- Hi-C data for comparison (optional)
+- trained model weights (required)
+
+Then run:
+
 ```bash
 python virtual_deletion.py
 ```
-For genomes with excluded regions, these codes can be freed
+For genomes with excluded regions, use the following logic to filter masked intervals:
+
 ```python
 exclude_bed_path = data_path + f"/genome/hg38.bed"
 exclude_regions = GenomicDataset._load_exclude_regions_static(exclude_bed_path)
@@ -136,12 +155,19 @@ if GenomicDataset._is_position_excluded_static(chrom, seq_start, seq_start + win
                     print(f'{seq_start} had exclude!')
                     continue
 ```
-# Section 6 : Whole genome prediction
+## Whole-genome Prediction
+
+To generate chromosome-scale predictions, run:
 ```bash
-python whole_chrom_prediction.py ----species cotton
+python whole_chrom_prediction.py --species cotton
 ```
 Here is the [Hi-C](https://zenodo.org/records/18740232) predicted by our fine-tuning model.
 
-# Section 7 : 
-We have developed a [web site](http://cotton-bigdata.hzau.edu.cn/octopus) for visualizing predictions of Hi-C maps for various species.
+## Web Server
+
+We provide a [web server](http://cotton-bigdata.hzau.edu.cn/octopus) for browsing and visualizing predicted Hi-C maps across multiple species.
+
+## Contact
+
+For questions, suggestions, or bug reports, please open an issue on GitHub.
 
