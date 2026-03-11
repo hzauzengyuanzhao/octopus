@@ -1,4 +1,4 @@
-<img width="2600" height="1632" alt="octopus" src="https://github.com/user-attachments/assets/c81fcd63-0898-4fe8-b420-771023af08b0" />
+![octopus](docs/octopus_logo.png)
 
 # Octopus
 A multimodal deep learning framework for cross-species prediction of plant 3D chromatin architecture.
